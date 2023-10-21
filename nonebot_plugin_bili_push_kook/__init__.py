@@ -123,13 +123,13 @@ try:
     if "\\" in basepath:
         basepath = basepath.replace("\\", "/")
     if basepath.startswith("./"):
-        basepath = os.path.abspath('.') + "/" + basepath.removeprefix(".")
+        basepath = os.path.abspath('') + "/" + basepath.removeprefix(".")
         if not basepath.endswith("/"):
             basepath += "/"
     else:
         basepath += "/"
 except Exception as e:
-    basepath = os.path.abspath('.') + "/"
+    basepath = os.path.abspath('') + "/"
 # 配置3：
 try:
     apiurl = config.bilipush_apiurl
@@ -2077,8 +2077,8 @@ async def bili_push_command(bot: Bot, event: Event):
     target_id = event.target_id  #  频道id
     session_id = event.get_session_id()  # group_频道id_用户id 或 p*_用户id
     if session_id.startswith("group"):
-        # groupcode = session_id.split('_')[1]  # 频道id。现已改为频道号
-        groupcode = guild_id
+        groupcode = target_id  # 频道id
+        # groupcode = guild_id  # 服务器id
     else:
         groupcode = f"p{user_id}"
     groupcode = f"g{groupcode}"  # g{guild_id} 或 gp{user_id}
@@ -2373,14 +2373,37 @@ async def bili_push_command(bot: Bot, event: Event):
         await get_new.finish(msg)
     elif code == 2:
         imageurl = await bot.upload_file(returnpath)
-        cache_msg = MessageSegment.image(imageurl)
+        msg = MessageSegment.image(imageurl)
         await get_new.finish(msg)
     elif code == 3:
         imageurl = await bot.upload_file(returnpath)
-        msg1 = MessageSegment.image(imageurl)
-        msg2 = MessageSegment.text(message)
-        msg = msg1 + msg2
-        await get_new.finish(msg)
+        msg = MessageSegment.image(imageurl)
+        if groupcode.startswith("gp"):
+            await bot.send_msg(
+                message_type="private",
+                user_id=user_id,
+                message=msg
+            )
+        else:
+            await bot.send_msg(
+                message_type="channel",
+                channel_id=target_id,
+                message=msg
+            )
+        msg = MessageSegment.text(message)
+        if groupcode.startswith("gp"):
+            await bot.send_msg(
+                message_type="private",
+                user_id=user_id,
+                message=msg
+            )
+        else:
+            await bot.send_msg(
+                message_type="channel",
+                channel_id=target_id,
+                message=msg
+            )
+        await get_new.finish()
     elif code == 4:
         await get_new.finish(msg)
     else:
@@ -2391,7 +2414,7 @@ minute = "*/" + waittime
 
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
-async def run_bili_push(bot: Bot):
+async def run_bili_push():
     logger.info("bili_push_1.1.4.1")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
@@ -2474,7 +2497,7 @@ async def run_bili_push(bot: Bot):
                 for subscription in subscriptions:
                     uid = str(subscription[2])
                     groupcode = subscription[1]
-                    if "p" in groupcode:
+                    if groupcode.startswith("gp"):
                         if groupcode[2:] in friendlist:
                             if uid not in subscriptionlist:
                                 subscriptionlist.append(uid)
@@ -2637,7 +2660,7 @@ async def run_bili_push(bot: Bot):
                                             paste_image = circle_corner(paste_image, 15)
                                             draw_image.paste(paste_image, (75, 330))
 
-                                    returnpath = os.path.abspath('.') + '/cache/bili动态/'
+                                    returnpath = os.path.abspath('') + '/cache/bili动态/'
                                     if not os.path.exists(returnpath):
                                         os.makedirs(returnpath)
                                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"
@@ -2748,7 +2771,7 @@ async def run_bili_push(bot: Bot):
                             logger.info("该订阅由另一个bot进行推送，本bot将不发送消息")
 
                     # 检查是否是好友、是否入群
-                    if "p" in groupcode:
+                    if groupcode.startswith("gp"):
                         if groupcode[2:] not in friendlist:
                             send = False
                     else:
@@ -2816,7 +2839,7 @@ async def run_bili_push(bot: Bot):
                                         while num > 0:
                                             num -= 1
                                             if cache_push_style.startswith("[绘图]"):
-                                                imageurl = await bot.upload_file(returnpath)
+                                                imageurl = await nonebot.get_bot(botid).upload_file(returnpath)
                                                 cache_msg = MessageSegment.image(imageurl)
                                                 msg += cache_msg
                                                 cache_push_style = cache_push_style.removeprefix("[绘图]")
@@ -2855,7 +2878,7 @@ async def run_bili_push(bot: Bot):
                                     stime = random.randint(1, 200) / 10 + sleeptime
 
                                     if now_maximum_send > 0:
-                                        if "p" in groupcode:
+                                        if groupcode.startswith("gp"):
                                             send_qq = groupcode.removeprefix("gp")
                                             if send_qq in friendlist:
                                                 # bot已添加好友，发送消息
@@ -3007,7 +3030,7 @@ async def run_bili_push(bot: Bot):
                                     conn.close()
 
                     # 检查是否是好友、是否入群
-                    if "p" in groupcode:
+                    if groupcode.startswith("gp"):
                         if groupcode[2:] not in friendlist:
                             send = False
                     else:
@@ -3098,7 +3121,7 @@ async def run_bili_push(bot: Bot):
                             while num > 0:
                                 num -= 1
                                 if cache_push_style.startswith("[绘图]"):
-                                    imageurl = await bot.upload_file(draw_path)
+                                    imageurl = await nonebot.get_bot(botid).upload_file(draw_path)
                                     cache_msg = MessageSegment.image(imageurl)
                                     msg += cache_msg
                                     cache_push_style = cache_push_style.removeprefix("[绘图]")
@@ -3124,7 +3147,7 @@ async def run_bili_push(bot: Bot):
                                             os.makedirs(image_path)
                                         image_path += f"{num}.png"
                                         image.save(image_path)
-                                        imageurl = await bot.upload_file(image_path)
+                                        imageurl = await nonebot.get_bot(botid).upload_file(image_path)
                                         cache_msg = MessageSegment.image(imageurl)
                                         msg += cache_msg
                                     cache_push_style = cache_push_style.removeprefix("[图片]")
@@ -3133,7 +3156,7 @@ async def run_bili_push(bot: Bot):
                                 else:
                                     logger.error("读取动态推送样式出错，请检查配置是否正确")
                             stime = random.randint(1, 200) / 10 + sleeptime
-                            if "p" in groupcode:
+                            if groupcode.startswith("gp"):
                                 send_qq = groupcode.removeprefix("gp")
                                 if send_qq in friendlist:
                                     # bot已添加好友，发送消息

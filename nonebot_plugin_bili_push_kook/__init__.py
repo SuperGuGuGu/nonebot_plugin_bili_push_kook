@@ -226,9 +226,9 @@ __plugin_meta__ = PluginMetadata(
     usage="/添加订阅/删除订阅/查看订阅/最新动态",
     type="application",
     # 发布必填，当前有效类型有：`library`（为其他插件编写提供功能），`application`（向机器人用户提供功能）。
-    homepage="https://github.com/SuperGuGuGu/nonebot_plugin_bili_push",
+    homepage="https://github.com/SuperGuGuGu/nonebot_plugin_bili_push_kook",
     # 发布必填。
-    supported_adapters={"~onebot.v11"},
+    supported_adapters={"~kaiheila"},
     # 支持的适配器集合，其中 `~` 在此处代表前缀 `nonebot.adapters.`，其余适配器亦按此格式填写。
     # 若插件可以保证兼容所有适配器（即仅使用基本适配器功能）可不填写，否则应该列出插件支持的适配器。
 )
@@ -2066,7 +2066,7 @@ get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '�
 
 @get_new.handle()
 async def bili_push_command(bot: Bot, event: Event):
-    logger.info("bili_push_command_1.1.4")
+    logger.info("bili_push_command_1.1.4.1")
     returnpath = "None"
     message = " "
     code = 0
@@ -2392,7 +2392,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push(bot: Bot):
-    logger.info("bili_push_1.1.4")
+    logger.info("bili_push_1.1.4.1")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
@@ -2406,10 +2406,6 @@ async def run_bili_push(bot: Bot):
 
     botids = list(nonebot.get_bots())
     for botid in botids:
-        bot_type = nonebot.get_bot(botid).type
-        if bot_type != "OneBot V11":
-            logger.info("暂不支持的适配器类型")
-            continue
         botid = str(botid)
 
         friendlist = []
@@ -3102,7 +3098,7 @@ async def run_bili_push(bot: Bot):
                             while num > 0:
                                 num -= 1
                                 if cache_push_style.startswith("[绘图]"):
-                                    imageurl = await bot.upload_file(returnpath)
+                                    imageurl = await bot.upload_file(draw_path)
                                     cache_msg = MessageSegment.image(imageurl)
                                     msg += cache_msg
                                     cache_push_style = cache_push_style.removeprefix("[绘图]")
@@ -3128,7 +3124,7 @@ async def run_bili_push(bot: Bot):
                                             os.makedirs(image_path)
                                         image_path += f"{num}.png"
                                         image.save(image_path)
-                                        imageurl = await bot.upload_file(returnpath)
+                                        imageurl = await bot.upload_file(image_path)
                                         cache_msg = MessageSegment.image(imageurl)
                                         msg += cache_msg
                                     cache_push_style = cache_push_style.removeprefix("[图片]")

@@ -123,13 +123,13 @@ try:
     if "\\" in basepath:
         basepath = basepath.replace("\\", "/")
     if basepath.startswith("./"):
-        basepath = os.path.abspath('') + "/" + basepath.removeprefix(".")
+        basepath = os.path.abspath('.') + "/" + basepath.removeprefix(".")
         if not basepath.endswith("/"):
             basepath += "/"
     else:
         basepath += "/"
 except Exception as e:
-    basepath = os.path.abspath('') + "/"
+    basepath = os.path.abspath('.') + "/"
 # 配置3：
 try:
     apiurl = config.bilipush_apiurl
@@ -157,7 +157,7 @@ except Exception as e:
 try:
     sleeptime = int(config.bilipush_sleeptime)
 except Exception as e:
-    sleeptime = 10
+    sleeptime = 1
 # 配置7：
 try:
     config_botswift = config.bilipush_botswift
@@ -734,7 +734,7 @@ def get_draw(data, only_info: bool = False):
         # 初始化文字版动态
         message_title = ""
         message_body = ""
-        message_url = "t.bilibili.com/" + dynamicid
+        message_url = "http://t.bilibili.com/" + dynamicid
         message_images = []
 
         # 绘制基础信息
@@ -2066,7 +2066,7 @@ get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '�
 
 @get_new.handle()
 async def bili_push_command(bot: Bot, event: Event):
-    logger.info("bili_push_command_1.1.5")
+    logger.info("bili_push_command_1.1.6")
     returnpath = "None"
     message = " "
     code = 0
@@ -2415,7 +2415,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info("bili_push_1.1.5")
+    logger.info("bili_push_1.1.6")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
@@ -2461,6 +2461,28 @@ async def run_bili_push():
                 member_status = member_data.status  # ？？
                 if member_id not in friendlist:
                     friendlist.append(member_id)
+
+        async def send_msg(groupcode: str = None, msg=None):
+            if groupcode.startswith("gp"):
+                if groupcode[2:] in friendlist:
+                    await nonebot.get_bot(botid).send_msg(
+                        message_type="private",
+                        user_id=groupcode[2:],
+                        message=msg
+                    )
+                else:
+                    logger.error("bot找不到好友")
+            elif groupcode.startswith("g"):
+                if groupcode[1:] in grouplist:
+                    await nonebot.get_bot(botid).send_msg(
+                        message_type="channel",
+                        channel_id=groupcode[1:],
+                        message=msg
+                    )
+                else:
+                    logger.error("bot未在频道中")
+            else:
+                logger.error("不支持的发送消息形式")
 
         # 新建数据库
         # 读取数据库列表
@@ -2850,120 +2872,88 @@ async def run_bili_push():
                                     biliname = data[3]
                                     message_title = data[4]
                                     room_id = data[5]
-                                    message_url = f"live.bilibili.com/{room_id}"
+                                    message_url = f"http://live.bilibili.com/{room_id}"
 
-                                    # 0下播 1直播 2轮播
-                                    if state == "1":
-                                        num = 10
-                                        cache_push_style = plugin_config("bilipush_push_style", groupcode)
-                                        msg = MessageSegment.text("")
-                                        while num > 0:
-                                            num -= 1
-                                            if cache_push_style.startswith("[绘图]"):
-                                                imageurl = await nonebot.get_bot(botid).upload_file(returnpath)
-                                                cache_msg = MessageSegment.image(imageurl)
-                                                msg += cache_msg
-                                                cache_push_style = cache_push_style.removeprefix("[绘图]")
-                                            elif cache_push_style.startswith("[标题]"):
-                                                text = biliname + "正在直播："
-                                                cache_msg = MessageSegment.text(text)
-                                                msg += cache_msg
-                                                cache_push_style = cache_push_style.removeprefix("[标题]")
-                                            elif cache_push_style.startswith("[链接]"):
-                                                cache_msg = MessageSegment.text(message_url)
-                                                msg += cache_msg
-                                                cache_push_style = cache_push_style.removeprefix("[链接]")
-                                            elif cache_push_style.startswith("[内容]"):
-                                                cache_msg = MessageSegment.text(message_title)
-                                                msg += cache_msg
-                                                cache_push_style = cache_push_style.removeprefix("[内容]")
-                                            elif cache_push_style.startswith("[图片]"):
-                                                # 无图片，待前面增加代码记录图片内容
-                                                cache_push_style = cache_push_style.removeprefix("[图片]")
-                                            elif cache_push_style == "":
-                                                num = 0
-                                            else:
-                                                logger.error("读取动态推送样式出错，请检查配置是否正确")
-                                    else:
-                                        msg = MessageSegment.text(biliname + "已下播")
-
-                                    # 检测是否需要at全体成员
-                                    if plugin_config("at_all", groupcode) is True and "p" not in groupcode:
-                                        can_at_all = int((await nonebot.get_bot(botid).get_group_at_all_remain(
-                                            group_id=int(groupcode[1:])))["remain_at_all_count_for_uin"])
-                                        if can_at_all > 0:
-                                            pass
-                                            # 代码需要验证
-                                            # msg = MessageSegment.at("all") + msg
-
-                                    stime = random.randint(1, 200) / 10 + sleeptime
-
+                                    stime = 0.1 + sleeptime
                                     if now_maximum_send > 0:
-                                        if groupcode.startswith("gp"):
-                                            send_qq = groupcode.removeprefix("gp")
-                                            if send_qq in friendlist:
-                                                # bot已添加好友，发送消息
-                                                try:
-                                                    if new_push is not True:
-                                                        now_maximum_send -= 1
-                                                        await nonebot.get_bot(botid).send_private_msg(user_id=send_qq,
-                                                                                                      message=msg)
-                                                        logger.info("发送私聊成功")
-                                                        await asyncio.sleep(stime)
-                                                    if new_push is True and state != "0":  # 第一次推送且是下播时不推送
-                                                        now_maximum_send -= 1
-                                                        await nonebot.get_bot(botid).send_private_msg(user_id=send_qq,
-                                                                                                      message=msg)
-                                                        logger.info("发送私聊成功")
-                                                        await asyncio.sleep(stime)
-                                                    conn = sqlite3.connect(livedb)
-                                                    cursor = conn.cursor()
-                                                    cursor.execute(
-                                                        "replace into 'gp" + send_qq + "'(dynamicid,uid) "
-                                                                                       "values('live" + uid + "','" + state + "')")
-                                                    cursor.close()
-                                                    conn.commit()
-                                                    conn.close()
-
-                                                except Exception as e:
-                                                    logger.error(
-                                                        f'私聊内容发送失败：send_qq：{send_qq},message:{message},'
-                                                        f'retrnpath:{returnpath}')
+                                        if new_push is not True or (new_push is True and state != "0"):
+                                            now_maximum_send -= 1
+                                            # 0下播 1直播 2轮播
+                                            if state == "1":
+                                                cache_push_style = plugin_config("bilipush_push_style", groupcode)
+                                                push_text = ""
+                                                while len(cache_push_style) > 0:
+                                                    if cache_push_style.startswith("[标题]"):
+                                                        cache_push_style = cache_push_style.removeprefix("[标题]")
+                                                        push_text += biliname + "正在直播："
+                                                    elif cache_push_style.startswith("[链接]"):
+                                                        cache_push_style = cache_push_style.removeprefix("[链接]")
+                                                        push_text += message_url
+                                                    elif cache_push_style.startswith("[内容]"):
+                                                        cache_push_style = cache_push_style.removeprefix("[内容]")
+                                                        push_text += message_title
+                                                    elif cache_push_style.startswith("[绘图]"):
+                                                        cache_push_style = cache_push_style.removeprefix("[绘图]")
+                                                        if push_text != "":
+                                                            msg = MessageSegment.text(push_text)
+                                                            if groupcode.startswith("gp"):
+                                                                await nonebot.get_bot(botid).send_msg(
+                                                                    message_type="private",
+                                                                    user_id=groupcode[2:],
+                                                                    message=msg
+                                                                )
+                                                            else:
+                                                                await nonebot.get_bot(botid).send_msg(
+                                                                    message_type="channel",
+                                                                    channel_id=groupcode[1:],
+                                                                    message=msg
+                                                                )
+                                                            push_text = ""
+                                                        imageurl = await nonebot.get_bot(botid).upload_file(returnpath)
+                                                        msg = MessageSegment.image(imageurl)
+                                                        if groupcode.startswith("gp"):
+                                                            await nonebot.get_bot(botid).send_msg(
+                                                                message_type="private",
+                                                                user_id=groupcode[2:],
+                                                                message=msg
+                                                            )
+                                                        else:
+                                                            await nonebot.get_bot(botid).send_msg(
+                                                                message_type="channel",
+                                                                channel_id=groupcode[1:],
+                                                                message=msg
+                                                            )
+                                                    elif cache_push_style.startswith("[图片]"):
+                                                        cache_push_style = cache_push_style.removeprefix("[图片]")
+                                                        # 未设置保存原图
+                                                        pass
+                                                    else:
+                                                        push_text += cache_push_style[:1]
+                                                        cache_push_style = cache_push_style.removeprefix(cache_push_style[:1])
+                                                if push_text != "":
+                                                    msg = MessageSegment.text(push_text)
+                                                    await send_msg(groupcode=groupcode, msg=msg)
+                                                    push_text = ""
                                             else:
-                                                logger.info("bot未入群")
-                                        else:
-                                            send_groupcode = groupcode.removeprefix("g")
-                                            if send_groupcode in grouplist:
-                                                # bot已添加好友，发送消息
-                                                try:
-                                                    if new_push is not True:  # 第一次推送且是下播时不推送
-                                                        now_maximum_send -= 1
-                                                        await nonebot.get_bot(botid).send_group_msg(
-                                                            group_id=send_groupcode,
-                                                            message=msg)
-                                                        logger.info("发送群聊成功")
-                                                        await asyncio.sleep(stime)
-                                                    if new_push is True and state != "0":  # 第一次推送且是下播时不推送
-                                                        now_maximum_send -= 1
-                                                        await nonebot.get_bot(botid).send_group_msg(
-                                                            group_id=send_groupcode,
-                                                            message=msg)
-                                                        logger.info("发送群聊成功")
-                                                        await asyncio.sleep(stime)
-                                                    conn = sqlite3.connect(livedb)
-                                                    cursor = conn.cursor()
-                                                    cursor.execute(
-                                                        "replace into 'g" + send_groupcode + "'(dynamicid,uid) " +
-                                                        "values('live" + uid + "','" + state + "')")
-                                                    cursor.close()
-                                                    conn.commit()
-                                                    conn.close()
-                                                except Exception as e:
-                                                    logger.error(
-                                                        f"群聊内容发送失败：groupcode：{send_groupcode},message:{message}"
-                                                        f",retrnpath:{returnpath}")
-                                            else:
-                                                logger.info("bot未入群")
+                                                msg = MessageSegment.text(biliname + "已下播")
+                                                await send_msg(groupcode=groupcode, msg=msg)
+                                            await asyncio.sleep(stime)
+                                            conn = sqlite3.connect(livedb)
+                                            cursor = conn.cursor()
+                                            cursor.execute(
+                                                f"replace into '{groupcode}'(dynamicid,uid) "
+                                                f"values('live{uid}','{state}')")
+                                            cursor.close()
+                                            conn.commit()
+                                            conn.close()
+                                    # 检测是否需要at全体成员
+                                    # if plugin_config("at_all", groupcode) is True and "p" not in groupcode:
+                                    #     can_at_all = int((await nonebot.get_bot(botid).get_group_at_all_remain(
+                                    #         group_id=int(groupcode[1:])))["remain_at_all_count_for_uin"])
+                                    #     if can_at_all > 0:
+                                    #         pass
+                                    # 代码需要验证
+                                    # msg = MessageSegment.at("all") + msg
 
         # ############推送动态############
         run = True  # 代码折叠
@@ -3122,7 +3112,7 @@ async def run_bili_push():
                         for dynamicid in pushlist:
                             conn = sqlite3.connect(livedb)
                             cursor = conn.cursor()
-                            cursor.execute("SELECT * FROM 'wait_push2' WHERE dynamicid = " + dynamicid)
+                            cursor.execute(f"SELECT * FROM 'wait_push2' WHERE dynamicid = {dynamicid}")
                             data = cursor.fetchone()
                             cursor.close()
                             conn.commit()
@@ -3136,90 +3126,73 @@ async def run_bili_push():
                             message_images = message_images.replace("'", '"')
                             message_images = json.loads(message_images)["images"]
 
-                            num = 10
+                            stime = 0.1 + sleeptime
                             cache_push_style = plugin_config("bilipush_push_style", groupcode)
-                            msg = MessageSegment.text("")
-                            while num > 0:
-                                num -= 1
-                                if cache_push_style.startswith("[绘图]"):
-                                    imageurl = await nonebot.get_bot(botid).upload_file(draw_path)
-                                    cache_msg = MessageSegment.image(imageurl)
-                                    msg += cache_msg
-                                    cache_push_style = cache_push_style.removeprefix("[绘图]")
-                                elif cache_push_style.startswith("[标题]"):
-                                    cache_msg = MessageSegment.text(message_title)
-                                    msg += cache_msg
-                                    cache_push_style = cache_push_style.removeprefix("[标题]")
-                                elif cache_push_style.startswith("[链接]"):
-                                    cache_msg = MessageSegment.text(message_url)
-                                    msg += cache_msg
-                                    cache_push_style = cache_push_style.removeprefix("[链接]")
-                                elif cache_push_style.startswith("[内容]"):
-                                    cache_msg = MessageSegment.text(message_body)
-                                    msg += cache_msg
-                                    cache_push_style = cache_push_style.removeprefix("[内容]")
-                                elif cache_push_style.startswith("[图片]"):
-                                    num = 0
-                                    for url in message_images:
-                                        num += 1
-                                        image = connect_api("image", url)
-                                        image_path = f"{cachepath}{dynamicid}/"
-                                        if not os.path.exists(image_path):
-                                            os.makedirs(image_path)
-                                        image_path += f"{num}.png"
-                                        image.save(image_path)
-                                        imageurl = await nonebot.get_bot(botid).upload_file(image_path)
-                                        cache_msg = MessageSegment.image(imageurl)
-                                        msg += cache_msg
-                                    cache_push_style = cache_push_style.removeprefix("[图片]")
-                                elif cache_push_style == "":
-                                    num = 0
-                                else:
-                                    logger.error("读取动态推送样式出错，请检查配置是否正确")
-                            stime = random.randint(1, 200) / 10 + sleeptime
-                            if groupcode.startswith("gp"):
-                                send_qq = groupcode.removeprefix("gp")
-                                if send_qq in friendlist:
-                                    # bot已添加好友，发送消息
-                                    try:
-                                        await nonebot.get_bot(botid).send_private_msg(user_id=send_qq, message=msg)
-                                        conn = sqlite3.connect(livedb)
-                                        cursor = conn.cursor()
-                                        cursor.execute(
-                                            "replace into 'gp" + send_qq + "'(dynamicid,uid) values(" + dynamicid + "," + uid + ")")
-                                        cursor.close()
-                                        conn.commit()
-                                        conn.close()
-                                        logger.info("发送私聊成功")
-                                    except Exception as e:
-                                        logger.error('私聊内容发送失败：send_qq：' + str(send_qq) + ",message:"
-                                                     + message + ",retrnpath:" + draw_path)
-                                    await asyncio.sleep(stime)
-                                else:
-                                    logger.info("bot未入群")
+                            push_text = ""
+
+                            if ((groupcode.startswith("gp") and groupcode[2:] in friendlist) or
+                                (groupcode.startswith("g") and groupcode[1:] in grouplist)):
+                                while len(cache_push_style) > 0:
+                                    if cache_push_style.startswith("[标题]"):
+                                        cache_push_style = cache_push_style.removeprefix("[标题]")
+                                        push_text += message_title
+                                    elif cache_push_style.startswith("[链接]"):
+                                        cache_push_style = cache_push_style.removeprefix("[链接]")
+                                        push_text += message_url
+                                    elif cache_push_style.startswith("[内容]"):
+                                        cache_push_style = cache_push_style.removeprefix("[内容]")
+                                        push_text += message_body
+                                    elif cache_push_style.startswith("[绘图]"):
+                                        cache_push_style = cache_push_style.removeprefix("[绘图]")
+                                        if push_text != "":
+                                            msg = MessageSegment.text(push_text)
+                                            if groupcode.startswith("gp"):
+                                                await send_msg(groupcode=groupcode, msg=msg)
+                                            else:
+                                                await send_msg(groupcode=groupcode, msg=msg)
+                                            push_text = ""
+                                        imageurl = await nonebot.get_bot(botid).upload_file(draw_path)
+                                        msg = MessageSegment.image(imageurl)
+                                        await send_msg(groupcode=groupcode, msg=msg)
+                                    elif cache_push_style.startswith("[图片]"):
+                                        cache_push_style = cache_push_style.removeprefix("[图片]")
+                                        if push_text != "":
+                                            msg = MessageSegment.text(push_text)
+                                            if groupcode.startswith("gp"):
+                                                await send_msg(groupcode=groupcode, msg=msg)
+                                            else:
+                                                await send_msg(groupcode=groupcode, msg=msg)
+                                            push_text = ""
+                                        num = 0
+                                        for url in message_images:
+                                            num += 1
+                                            image = connect_api("image", url)
+                                            image_path = f"{cachepath}{dynamicid}/"
+                                            if not os.path.exists(image_path):
+                                                os.makedirs(image_path)
+                                            image_path += f"{num}.png"
+                                            image.save(image_path)
+                                            imageurl = await nonebot.get_bot(botid).upload_file(image_path)
+                                            msg = MessageSegment.image(imageurl)
+                                            await send_msg(groupcode=groupcode, msg=msg)
+                                    else:
+                                        push_text += cache_push_style[:1]
+                                        cache_push_style = cache_push_style.removeprefix(cache_push_style[:1])
+                                if push_text != "":
+                                    msg = MessageSegment.text(push_text)
+                                    if groupcode.startswith("gp"):
+                                        await send_msg(groupcode=groupcode, msg=msg)
+                                    else:
+                                        await send_msg(groupcode=groupcode, msg=msg)
+                                    push_text = ""
+                                conn = sqlite3.connect(livedb)
+                                cursor = conn.cursor()
+                                cursor.execute(f"replace into '{groupcode}'(dynamicid,uid) values({dynamicid},{uid})")
+                                cursor.close()
+                                conn.commit()
+                                conn.close()
+                                await asyncio.sleep(stime)
                             else:
-                                send_groupcode = groupcode.removeprefix("g")
-                                if send_groupcode in grouplist:
-                                    # bot已添加好友，发送消息
-                                    try:
-                                        logger.info("开始发送群聊")
-                                        await nonebot.get_bot(botid).send_group_msg(group_id=send_groupcode,
-                                                                                    message=msg)
-                                        conn = sqlite3.connect(livedb)
-                                        cursor = conn.cursor()
-                                        cursor.execute(
-                                            "replace into 'g" + send_groupcode + "'(dynamicid,uid) values(" +
-                                            dynamicid + "," + uid + ")")
-                                        cursor.close()
-                                        conn.commit()
-                                        conn.close()
-                                        logger.info("发送群聊成功")
-                                    except Exception as e:
-                                        logger.error(
-                                            '群聊内容发送失败：groupcode：' + str(send_groupcode) + ",message:"
-                                            + message + ",retrnpath:" + draw_path)
-                                    await asyncio.sleep(stime)
-                                else:
-                                    logger.info("bot未入群")
+                                logger.info("bot未入群end")
     logger.info("run over")
     pass

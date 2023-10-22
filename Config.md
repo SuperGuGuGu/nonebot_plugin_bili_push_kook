@@ -20,10 +20,10 @@ bilipush_waittime=12
 
 3.发送间隔：
 
-> 每次发送完成后等待的时间，单位秒，默认 10-30 秒。 时间为设置的时间再加上随机延迟 1-20 秒
+> 每次发送完成后等待的时间，单位秒，默认 1 秒。&#x20;
 
 ```markup
-bilipush_sleeptime=10
+bilipush_sleeptime=1
 ```
 
 4.最大发送数量

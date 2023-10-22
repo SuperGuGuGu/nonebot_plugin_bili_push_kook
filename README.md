@@ -61,7 +61,9 @@ COMMAND_START=["/"]
 
 ## To-Do
 
-- [ ] 从OB迁移至Kook
+- [ ] 从 OB 迁移至 Kook
+
+- [ ] at_all 功能
 
 ## 交流
 

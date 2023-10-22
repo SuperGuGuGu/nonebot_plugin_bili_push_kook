@@ -259,7 +259,7 @@ def plugin_config(config_name: str, groupcode: str):
     # 如不存在配置文件，则新建一个
     if not os.path.exists(path):
         config = {"Group_Config":
-                    {"nonebot_plugin_bili_push": "https://github.com/SuperGuGuGu/nonebot_plugin_bili_push"}
+                      {"nonebot_plugin_bili_push": "https://github.com/SuperGuGuGu/nonebot_plugin_bili_push"}
                   }
         save_config()
         logger.info("未存在群配置文件，正在创建")
@@ -2058,7 +2058,7 @@ def get_draw(data, only_info: bool = False):
         "message_url": message_url,
         "message_body": message_body,
         "message_images": message_images
-        }
+    }
 
 
 get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '查看订阅', '帮助'}, block=False)
@@ -2066,7 +2066,7 @@ get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '�
 
 @get_new.handle()
 async def bili_push_command(bot: Bot, event: Event):
-    logger.info("bili_push_command_1.1.4.1")
+    logger.info("bili_push_command_1.1.5")
     returnpath = "None"
     message = " "
     code = 0
@@ -2074,7 +2074,7 @@ async def bili_push_command(bot: Bot, event: Event):
     botid = str(bot.self_id)  # 机器人id
     user_id = str(event.get_user_id())  # 用户ID
     guild_id = event.extra.guild_id  # 服务器id
-    target_id = event.target_id  #  频道id
+    target_id = event.target_id  # 频道id
     session_id = event.get_session_id()  # group_频道id_用户id 或 p*_用户id
     if session_id.startswith("group"):
         groupcode = target_id  # 频道id
@@ -2415,7 +2415,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info("bili_push_1.1.4.1")
+    logger.info("bili_push_1.1.5")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
@@ -2431,15 +2431,36 @@ async def run_bili_push():
     for botid in botids:
         botid = str(botid)
 
+        # 获取成员名单与频道名单
         friendlist = []
         grouplist = []
-        friends = await nonebot.get_bot(botid).get_friend_list()
-        for friendinfo in friends:
-            friendlist.append(str(friendinfo["user_id"]))
+        guild_list = await nonebot.get_bot(botid).call_api("/api/v3/guild/list")
+        guild_datas = guild_list.guilds
+        for guild_data in guild_datas:
+            guild_id = guild_data.id_  # 服务器id
+            guide_name = guild_data.name  # 服务器名称
 
-        groups = await nonebot.get_bot(botid).get_group_list()
-        for memberinfo in groups:
-            grouplist.append(str(memberinfo["group_id"]))
+            channels = await nonebot.get_bot(botid).call_api("/api/v3/guild/view", guild_id=guild_id)
+            channels = channels.channels
+            for channel in channels:
+                channel_id = channel.id_  # 频道id
+                channel_name = channel.name  # 频道名称
+                channel_type = channel.type  # 频道类型
+                # channel_type =0:分组 =1:文字 =2:语音
+                if channel_id not in grouplist and channel_type == 1:
+                    grouplist.append(channel_id)
+
+            data = await nonebot.get_bot(botid).call_api("/api/v3/guild/user-list", guild_id=guild_id)
+            member_list = data.users
+            for member_data in member_list:
+                member_id = member_data.id_  # 用户id
+                # member_name = member_data.username  # 用户名字
+                member_name = member_data.nickname  # 用户昵称
+                member_face = member_data.avatar  # 头像图片
+                member_isbot = member_data.bot  # 判断是否bot
+                member_status = member_data.status  # ？？
+                if member_id not in friendlist:
+                    friendlist.append(member_id)
 
         # 新建数据库
         # 读取数据库列表

@@ -176,48 +176,21 @@ try:
 except Exception as e:
     maximum_send = 5
 # 配置10：
-# debug_log
+try:
+    beta_test = config.bilipush_beta_test
+    print(f"beta_test{beta_test}")
+except Exception as e:
+    beta_test = False
 # 配置11：
 try:
     push_style = config.bilipush_push_style
     if push_style == "":
-        push_style = "[绘图][标题][链接]"
-    else:
-        # 检查配置是否正确
-        try:
-            # 替换同义符号
-            push_style = push_style.replace("【", "[")
-            push_style = push_style.replace("】", "]")
-            push_style = push_style.replace("（", "[")
-            push_style = push_style.replace("）", "]")
-            push_style = push_style.replace("{", "[")
-            push_style = push_style.replace("}", "]")
-            cache_push_style = push_style
-            num = 10
-            while num > 0:
-                num -= 1
-                if cache_push_style.startswith("[绘图]"):
-                    cache_push_style = cache_push_style.removeprefix("[绘图]")
-                elif cache_push_style.startswith("[标题]"):
-                    cache_push_style = cache_push_style.removeprefix("[标题]")
-                elif cache_push_style.startswith("[链接]"):
-                    cache_push_style = cache_push_style.removeprefix("[链接]")
-                elif cache_push_style.startswith("[内容]"):
-                    cache_push_style = cache_push_style.removeprefix("[内容]")
-                elif cache_push_style.startswith("[图片]"):
-                    cache_push_style = cache_push_style.removeprefix("[图片]")
-                elif cache_push_style == "":
-                    num = 0
-                else:
-                    logger.error("读取动态推送样式出错，请检查配置是否正确")
-            if cache_push_style != "":
-                logger.error("读取动态推送样式出错，请检查配置是否正确")
-                logger.error("正在读取默认配置[绘图][标题][链接]")
-                push_style = "[绘图][标题][链接]"
-        except Exception as e:
-            logger.error("读取动态推送样式出错，请检查配置是否正确")
+        # push_style = "[绘图][标题][链接]"
+        push_style = "[绘图][标题]-链-接-"
+    push_style = push_style.replace("[链接]", "-链-接-")
 except Exception as e:
-    push_style = "[绘图][标题][链接]"
+    # push_style = "[绘图][标题][链接]"
+    push_style = "[绘图][标题]-链-接-"
 
 # 插件元信息，让nonebot读取到这个插件是干嘛的
 __plugin_meta__ = PluginMetadata(
@@ -2066,7 +2039,7 @@ get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '�
 
 @get_new.handle()
 async def bili_push_command(bot: Bot, event: Event):
-    logger.info("bili_push_command_1.1.6")
+    logger.info("bili_push_command_1.1.7")
     returnpath = "None"
     message = " "
     code = 0
@@ -2124,18 +2097,32 @@ async def bili_push_command(bot: Bot, event: Event):
     for data in datas:
         if data[1] != "sqlite_sequence":
             tables.append(data[1])
-    # 检查是否创建订阅数据库2
-    if "subscriptionlist2" not in tables:
+    # 检查是否创建订阅数据库3
+    if "subscriptionlist3" not in tables:
         # 如未创建，则创建
-        cursor.execute('create table subscriptionlist2(id INTEGER primary key AUTOINCREMENT, '
-                       'groupcode varchar(10), uid int(10))')
-        # 判断是否存在数据库1
-        if "subscriptionlist" in tables:
+        cursor.execute('create table subscriptionlist3(id INTEGER primary key AUTOINCREMENT, '
+                       'groupcode varchar(10), uid int(10), liveid int(10))')
+        # 判断是否存在旧数据库
+        if "subscriptionlist2" in tables:
+            # 如果是，则存到数据库2
+            cursor.execute("SELECT * FROM subscriptionlist2")
+            datas = cursor.fetchall()
+            for data in datas:
+                # 自动获取房间号
+                # url = ""
+                liveid = 0
+                cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
+                               f'values("{data[1]}",{data[2]},{liveid})')
+        elif "subscriptionlist" in tables:
             # 如果是，则存到数据库2
             cursor.execute("SELECT * FROM subscriptionlist")
             datas = cursor.fetchall()
             for data in datas:
-                cursor.execute(f'replace into subscriptionlist2 ("groupcode","uid") values("{data[1]}",{data[2]})')
+                # 自动获取房间号
+                # url = ""
+                liveid = 0
+                cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
+                               f'values("{data[1]}",{data[2]},{liveid})')
     cursor.close()
     conn.commit()
     conn.close()
@@ -2190,7 +2177,8 @@ async def bili_push_command(bot: Bot, event: Event):
                             msg += cache_msg
                             cache_push_style = cache_push_style.removeprefix("[标题]")
                         elif cache_push_style.startswith("[链接]"):
-                            cache_msg = MessageSegment.text(message_url)
+                            # 需要检查发送消息内容是否违规
+                            cache_msg = MessageSegment.text("message_url")
                             msg += cache_msg
                             cache_push_style = cache_push_style.removeprefix("[链接]")
                         elif cache_push_style.startswith("[内容]"):
@@ -2236,7 +2224,7 @@ async def bili_push_command(bot: Bot, event: Event):
 
                 conn = sqlite3.connect(livedb)
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM subscriptionlist2 WHERE uid = " + str(uid) +
+                cursor.execute("SELECT * FROM subscriptionlist3 WHERE uid = " + str(uid) +
                                " AND groupcode = '" + str(groupcode) + "'")
                 subscription = cursor.fetchone()
                 cursor.close()
@@ -2249,7 +2237,7 @@ async def bili_push_command(bot: Bot, event: Event):
                     # 写入数据
                     conn = sqlite3.connect(livedb)
                     cursor = conn.cursor()
-                    cursor.execute(f"replace into subscriptionlist2 ('groupcode','uid') values('{groupcode}',{uid})")
+                    cursor.execute(f"replace into subscriptionlist3 ('groupcode','uid') values('{groupcode}',{uid})")
                     cursor.close()
                     conn.commit()
                     conn.close()
@@ -2323,7 +2311,7 @@ async def bili_push_command(bot: Bot, event: Event):
 
                 conn = sqlite3.connect(livedb)
                 cursor = conn.cursor()
-                cursor.execute(f"SELECT * FROM subscriptionlist2 WHERE uid = {uid} AND groupcode = '{groupcode}'")
+                cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE uid = {uid} AND groupcode = '{groupcode}'")
                 subscription = cursor.fetchone()
                 cursor.close()
                 conn.commit()
@@ -2336,7 +2324,7 @@ async def bili_push_command(bot: Bot, event: Event):
                     subid = str(subscription[0])
                     conn = sqlite3.connect(livedb)
                     cursor = conn.cursor()
-                    cursor.execute("delete from subscriptionlist2 where id = " + subid)
+                    cursor.execute("delete from subscriptionlist3 where id = " + subid)
                     conn.commit()
                     cursor.close()
                     conn.close()
@@ -2349,7 +2337,7 @@ async def bili_push_command(bot: Bot, event: Event):
 
         conn = sqlite3.connect(livedb)
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM subscriptionlist2 WHERE groupcode = '" + groupcode + "'")
+        cursor.execute("SELECT * FROM subscriptionlist3 WHERE groupcode = '" + groupcode + "'")
         subscriptions = cursor.fetchall()
         cursor.close()
         conn.commit()
@@ -2369,13 +2357,19 @@ async def bili_push_command(bot: Bot, event: Event):
 
     # 消息处理完毕，返回发送的消息
     if code == 1:
+        if beta_test:
+            print(f"发送msg：{message}")
         msg = MessageSegment.text(message)
         await get_new.finish(msg)
     elif code == 2:
+        if beta_test:
+            print(f"发送pic：{returnpath}")
         imageurl = await bot.upload_file(returnpath)
         msg = MessageSegment.image(imageurl)
         await get_new.finish(msg)
     elif code == 3:
+        if beta_test:
+            print(f"发送msg：{message},pic：{returnpath}")
         imageurl = await bot.upload_file(returnpath)
         msg = MessageSegment.image(imageurl)
         if groupcode.startswith("gp"):
@@ -2415,7 +2409,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info("bili_push_1.1.6")
+    logger.info("bili_push_1.1.7")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
@@ -2423,9 +2417,8 @@ async def run_bili_push():
     date_month = str(time.strftime("%m", time.localtime()))
     date_day = str(time.strftime("%d", time.localtime()))
     timenow = str(time.strftime("%H-%M-%S", time.localtime()))
-    dateshort = date_year + date_month + date_day
     cachepath = basepath + f"cache/draw/{date_year}/{date_month}/{date_day}/"
-    message = ""
+    message = "none"
 
     botids = list(nonebot.get_bots())
     for botid in botids:
@@ -2463,6 +2456,8 @@ async def run_bili_push():
                     friendlist.append(member_id)
 
         async def send_msg(groupcode: str = None, msg=None):
+            if beta_test:
+                print(f"发送groupcode:{groupcode}ms-msg：{msg}")
             if groupcode.startswith("gp"):
                 if groupcode[2:] in friendlist:
                     await nonebot.get_bot(botid).send_msg(
@@ -2495,18 +2490,32 @@ async def run_bili_push():
         for data in datas:
             if data[1] != "sqlite_sequence":
                 tables.append(data[1])
-        # 检查是否创建订阅数据库2
-        if "subscriptionlist2" not in tables:
+        # 检查是否创建订阅数据库3
+        if "subscriptionlist3" not in tables:
             # 如未创建，则创建
-            cursor.execute('create table subscriptionlist2(id INTEGER primary key AUTOINCREMENT, '
-                           'groupcode varchar(10), uid int(10))')
-            # 判断是否存在数据库1
-            if "subscriptionlist" in tables:
-                # 如果是，则存到数据库2
+            cursor.execute('create table subscriptionlist3(id INTEGER primary key AUTOINCREMENT, '
+                           'groupcode varchar(10), uid int(10), liveid int(10))')
+            # 判断是否存在旧数据库
+            if "subscriptionlist2" in tables:
+                # 如果是，则存到数据库3
+                cursor.execute("SELECT * FROM subscriptionlist2")
+                datas = cursor.fetchall()
+                for data in datas:
+                    # 自动获取房间号
+                    # url = ""
+                    liveid = 0
+                    cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
+                                   f'values("{data[1]}",{data[2]},{liveid})')
+            elif "subscriptionlist" in tables:
+                # 如果是，则存到数据库3
                 cursor.execute("SELECT * FROM subscriptionlist")
                 datas = cursor.fetchall()
                 for data in datas:
-                    cursor.execute(f'replace into subscriptionlist2 ("groupcode","uid") values("{data[1]}",{data[2]})')
+                    # 自动获取房间号
+                    # url = ""
+                    liveid = 0
+                    cursor.execute(f'replace into subscriptionlist3 ("groupcode","uid","liveid") '
+                                   f'values("{data[1]}",{data[2]},{liveid})')
         if "livelist3" not in tables:
             # 如未创建，则创建
             cursor.execute('create table livelist3(uid varchar(10) primary key, state varchar(10), '
@@ -2527,7 +2536,7 @@ async def run_bili_push():
 
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM subscriptionlist2")
+            cursor.execute("SELECT * FROM subscriptionlist3")
             subscriptions = cursor.fetchall()
             cursor.close()
             conn.commit()
@@ -2613,7 +2622,7 @@ async def run_bili_push():
 
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM subscriptionlist2")
+            cursor.execute("SELECT * FROM subscriptionlist3")
             subscriptions = cursor.fetchall()
             cursor.close()
             conn.commit()
@@ -2624,29 +2633,31 @@ async def run_bili_push():
             else:
                 subscriptionlist = []
                 for subscription in subscriptions:
-                    uid = str(subscription[2])
-                    subscriptionlist.append(uid)
+                    liveid = int(subscription[3])
+                    if liveid == 0:
+                        # 未获取房间号，开始获取房间号
+                        pass
+                        if beta_test:
+                            print(f"debug:pass uid: {subscription[2]}")
+                    if liveid != 0:
+                        subscriptionlist.append(str(liveid))
                 if subscriptionlist:
-                    url = "https://api.live.bilibili.com/room/v1/Room/get_status_info_by_uids"
-                    post_json = {"uids": subscriptionlist}
-                    json_data = connect_api("json", url, post_json=post_json)
-                    if json_data["code"] != 0:
-                        logger.error("直播api出错请将此消息反馈给开发者，sub[0]=" + str(subscriptionlist[0]) +
-                                     ",msg=" + json_data["message"])
-                    else:
-                        livedatas = json_data["data"]
-                        livedata_list = list(livedatas)
+                    for liveid in subscriptionlist:
+                        url = f"https://api.live.bilibili.com/room/v1/Room/get_info?id={liveid}"
+                        json_data = connect_api("json", url)
+                        if json_data["code"] != 0:
+                            logger.error("直播api出错请将此消息反馈给开发者，sub[0]=" + str(subscriptionlist[0]) +
+                                         ",msg=" + json_data["message"])
+                        else:
+                            livedata = json_data["data"]
+                            uid = livedata["uid"]
+                            logger.info(f"bili_live_开始获取消息:{uid}")
 
-                        conn = sqlite3.connect(livedb)
-                        cursor = conn.cursor()
-                        for uid in livedata_list:
-                            logger.info("bili_live_开始获取消息:" + str(uid))
-                            livedata = livedatas[uid]
+                            conn = sqlite3.connect(livedb)
+                            cursor = conn.cursor()
                             live_status = str(livedata["live_status"])
-
                             cursor.execute("SELECT * FROM livelist3 WHERE uid='" + str(uid) + "'")
                             data_db = cursor.fetchone()
-
                             if data_db is None or live_status != str(data_db[1]):
                                 uname = livedata["uname"]
                                 face = livedata["face"]
@@ -2721,10 +2732,9 @@ async def run_bili_push():
                                         f'replace into livelist3 (uid, state, draw, username, message_title, room_id) '
                                         f'values'
                                         f'("{uid}","{live_status}","none","{uname}","{live_title}","{room_id}")')
-
-                        cursor.close()
-                        conn.commit()
-                        conn.close()
+                            cursor.close()
+                            conn.commit()
+                            conn.close()
 
         # ############推送直播状态############
         run = True  # 代码折叠
@@ -2732,7 +2742,7 @@ async def run_bili_push():
             logger.info('---------推送直播----------')
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM subscriptionlist2")
+            cursor.execute("SELECT * FROM subscriptionlist3")
             subscriptions = cursor.fetchall()
             cursor.close()
             conn.commit()
@@ -2888,7 +2898,9 @@ async def run_bili_push():
                                                         push_text += biliname + "正在直播："
                                                     elif cache_push_style.startswith("[链接]"):
                                                         cache_push_style = cache_push_style.removeprefix("[链接]")
-                                                        push_text += message_url
+                                                        # push_text += message_url
+                                                        # 需要检查发送消息内容是否违规
+                                                        push_text += "message_url"
                                                     elif cache_push_style.startswith("[内容]"):
                                                         cache_push_style = cache_push_style.removeprefix("[内容]")
                                                         push_text += message_title
@@ -2929,7 +2941,8 @@ async def run_bili_push():
                                                         pass
                                                     else:
                                                         push_text += cache_push_style[:1]
-                                                        cache_push_style = cache_push_style.removeprefix(cache_push_style[:1])
+                                                        cache_push_style = cache_push_style.removeprefix(
+                                                            cache_push_style[:1])
                                                 if push_text != "":
                                                     msg = MessageSegment.text(push_text)
                                                     await send_msg(groupcode=groupcode, msg=msg)
@@ -2961,7 +2974,7 @@ async def run_bili_push():
             logger.info('---------推送动态----------')
             conn = sqlite3.connect(livedb)
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM subscriptionlist2")
+            cursor.execute("SELECT * FROM subscriptionlist3")
             subscriptions = cursor.fetchall()
             cursor.close()
             conn.commit()
@@ -3131,14 +3144,16 @@ async def run_bili_push():
                             push_text = ""
 
                             if ((groupcode.startswith("gp") and groupcode[2:] in friendlist) or
-                                (groupcode.startswith("g") and groupcode[1:] in grouplist)):
+                                    (groupcode.startswith("g") and groupcode[1:] in grouplist)):
                                 while len(cache_push_style) > 0:
                                     if cache_push_style.startswith("[标题]"):
                                         cache_push_style = cache_push_style.removeprefix("[标题]")
                                         push_text += message_title
                                     elif cache_push_style.startswith("[链接]"):
                                         cache_push_style = cache_push_style.removeprefix("[链接]")
-                                        push_text += message_url
+                                        # push_text += message_url
+                                        # 需要检查发送消息内容是否违规
+                                        push_text += "message_url"
                                     elif cache_push_style.startswith("[内容]"):
                                         cache_push_style = cache_push_style.removeprefix("[内容]")
                                         push_text += message_body

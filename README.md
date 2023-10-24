@@ -6,6 +6,8 @@ B 订阅推送插件 for Kook
 
 原项目：[bili-push for Onebot](https://github.com/SuperGuGuGu/nonebot_plugin_bili_push)
 
+## --不要配置“使用\[链接]推送“，不然可能会导致触发敏感词导致账号封禁--
+
 ## 示例
 
 ![输入图片描述](README_md_files/9cf89890-0952-11ee-8733-25d9c7397331.jpeg?v=1&type=image)

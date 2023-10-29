@@ -2189,7 +2189,10 @@ async def bili_push_command(bot: Bot, event: Event):
                             for url in message_images:
                                 num += 1
                                 image = connect_api("image", url)
-                                image_path = cachepath + dynamicid + "/" + str(num) + ".png"
+                                image_path = f"{cachepath}{dynamicid}/"
+                                if not os.path.exists(image_path):
+                                    os.makedirs(image_path)
+                                image_path = f"{image_path}{num}.png"
                                 image.save(image_path)
                                 imageurl = await bot.upload_file(returnpath)
                                 cache_msg = MessageSegment.image(imageurl)
@@ -2208,35 +2211,73 @@ async def bili_push_command(bot: Bot, event: Event):
         if user_id in plugin_config("admin", groupcode):
             logger.info("command:添加订阅")
             code = 0
+
+            # 判断command2是否为纯数字或l开头的数字
             if "UID:" in command2:
                 command2 = command2.removeprefix("UID:")
+            if command2.startswith("L"):
+                command2 = command2.replace("L", "l")
+            if command2.startswith("l"):
+                command2_cache = command2.removeprefix("l")
+            else:
+                command2_cache = command2
             try:
-                command2 = int(command2)
-                command2 = str(command2)
+                command2_cache = int(command2_cache)
+                if command2.startswith("l"):
+                    command2 = f"l{command2_cache}"
+                else:
+                    command2 = str(command2_cache)
             except Exception as e:
                 command2 = ""
             if command2 == "":
                 code = 1
-                message = "请添加uid来添加订阅"
+                message = "请添加uid或房间id来添加订阅"
             else:
-                uid = command2
+                if command2.startswith("l"):
+                    liveid = command2[1:]
+                    url = f"https://api.live.bilibili.com/room/v1/Room/get_info?id={liveid}"
+                    json_data = connect_api("json", url)
+                    if json_data["code"] != 0:
+                        logger.error(f"直播api出错请将此消息反馈给开发者，liveid={liveid},msg={json_data['message']}")
+                        uid = 0
+                    else:
+                        livedata = json_data["data"]
+                        uid = livedata["uid"]
+                else:
+                    liveid = 0
+                    uid = command2
 
                 conn = sqlite3.connect(livedb)
                 cursor = conn.cursor()
-                cursor.execute("SELECT * FROM subscriptionlist3 WHERE uid = " + str(uid) +
-                               " AND groupcode = '" + str(groupcode) + "'")
+                cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE uid = ‘{uid}’ AND groupcode = '{groupcode}'")
                 subscription = cursor.fetchone()
                 cursor.close()
                 conn.commit()
                 conn.close()
 
-                if subscription is None:
+                if uid == 0:
+                    code = 1
+                    message = "订阅失败，请检查错误日志"
+                elif subscription is not None and subscription[3] is None:
+                    # 写入数据
+                    conn = sqlite3.connect(livedb)
+                    cursor = conn.cursor()
+                    cursor.execute(f"replace into subscriptionlist3 ('groupcode','uid','liveid') "
+                                   f"values('{groupcode}','{uid}','{liveid}')")
+                    cursor.close()
+                    conn.commit()
+                    conn.close()
+
+                    code = 1
+                    message = "添加直播、动态间订阅成功"
+                elif subscription is None:
                     logger.info("无订阅，添加订阅")
 
                     # 写入数据
                     conn = sqlite3.connect(livedb)
                     cursor = conn.cursor()
-                    cursor.execute(f"replace into subscriptionlist3 ('groupcode','uid') values('{groupcode}',{uid})")
+                    cursor.execute(f"replace into subscriptionlist3 ('groupcode','uid','liveid') "
+                                   f"values('{groupcode}','{uid}','{liveid}')")
                     cursor.close()
                     conn.commit()
                     conn.close()
@@ -2408,7 +2449,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info("bili_push_1.1.7.1")
+    logger.info("bili_push_1.1.8")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
@@ -2622,12 +2663,12 @@ async def run_bili_push():
         run = True  # 代码折叠
         if run:
             logger.info('---------获取更新的直播----------')
-            fortsize = 30
 
             if use_api is True:
                 fontfile = get_file_path("腾祥嘉丽中圆.ttf")
             else:
                 fontfile = get_file_path("NotoSansSC[wght].ttf")
+            fortsize = 30
             font = ImageFont.truetype(font=fontfile, size=fortsize)
             logger.info("获取订阅列表")
 
@@ -2643,6 +2684,8 @@ async def run_bili_push():
                 logger.info("无订阅")
             else:
                 subscriptionlist = []
+                if beta_test:
+                    print(f"debug:pass list: {subscriptionlist}")
                 for subscription in subscriptions:
                     liveid = int(subscription[3])
                     if liveid == 0:
@@ -2667,7 +2710,7 @@ async def run_bili_push():
                             conn = sqlite3.connect(livedb)
                             cursor = conn.cursor()
                             live_status = str(livedata["live_status"])
-                            cursor.execute("SELECT * FROM livelist3 WHERE uid='" + str(uid) + "'")
+                            cursor.execute(f"SELECT * FROM livelist3 WHERE uid='{uid}'")
                             data_db = cursor.fetchone()
                             if data_db is None or live_status != str(data_db[1]):
                                 uname = livedata["uname"]
@@ -2725,7 +2768,7 @@ async def run_bili_push():
                                             paste_image = circle_corner(paste_image, 15)
                                             draw_image.paste(paste_image, (75, 330))
 
-                                    returnpath = os.path.abspath('') + '/cache/bili动态/'
+                                    returnpath = os.path.abspath('.') + '/cache/bili动态/'
                                     if not os.path.exists(returnpath):
                                         os.makedirs(returnpath)
                                     returnpath = f"{returnpath}{date}_{timenow}_{random.randint(1000, 9999)}.png"

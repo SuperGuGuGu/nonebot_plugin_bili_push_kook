@@ -186,11 +186,10 @@ try:
     push_style = config.bilipush_push_style
     if push_style == "":
         # push_style = "[绘图][标题][链接]"
-        push_style = "[绘图][标题]-链-接-"
-    push_style = push_style.replace("[链接]", "-链-接-")
+        push_style = "[绘图][标题][链-接]"
 except Exception as e:
     # push_style = "[绘图][标题][链接]"
-    push_style = "[绘图][标题]-链-接-"
+    push_style = "[绘图][标题][链-接]"
 
 # 插件元信息，让nonebot读取到这个插件是干嘛的
 __plugin_meta__ = PluginMetadata(
@@ -2456,24 +2455,36 @@ async def run_bili_push():
                     friendlist.append(member_id)
 
         async def send_msg(groupcode: str = None, msg=None):
+            async def send_msg_api(message_type:str, target, message):
+                await nonebot.get_bot(botid).send_msg(
+                    message_type=message_type,
+                    user_id=target,
+                    message=message)
+
             if beta_test:
                 print(f"发送groupcode:{groupcode}ms-msg：{msg}")
             if groupcode.startswith("gp"):
                 if groupcode[2:] in friendlist:
-                    await nonebot.get_bot(botid).send_msg(
-                        message_type="private",
-                        user_id=groupcode[2:],
-                        message=msg
-                    )
+                    try:
+                        await send_msg_api("private", groupcode[2:], msg)
+                    except Exception as e:
+                        logger.error(f"内容发送失败【私聊目标：{groupcode[2:]}， 消息内容：{msg}】")
+                        try:
+                            await send_msg_api("private", groupcode[2:], "内容发送失败")
+                        except Exception as e:
+                            pass
                 else:
                     logger.error("bot找不到好友")
             elif groupcode.startswith("g"):
                 if groupcode[1:] in grouplist:
-                    await nonebot.get_bot(botid).send_msg(
-                        message_type="channel",
-                        channel_id=groupcode[1:],
-                        message=msg
-                    )
+                    try:
+                        await send_msg_api("channel", groupcode[1:], msg)
+                    except Exception as e:
+                        logger.error(f"内容发送失败【私聊目标：{groupcode[1:]}， 消息内容：{msg}】")
+                        try:
+                            await send_msg_api("channel", groupcode[1:], "内容发送失败")
+                        except Exception as e:
+                            pass
                 else:
                     logger.error("bot未在频道中")
             else:
@@ -2898,9 +2909,7 @@ async def run_bili_push():
                                                         push_text += biliname + "正在直播："
                                                     elif cache_push_style.startswith("[链接]"):
                                                         cache_push_style = cache_push_style.removeprefix("[链接]")
-                                                        # push_text += message_url
-                                                        # 需要检查发送消息内容是否违规
-                                                        push_text += "message_url"
+                                                        push_text += message_url
                                                     elif cache_push_style.startswith("[内容]"):
                                                         cache_push_style = cache_push_style.removeprefix("[内容]")
                                                         push_text += message_title
@@ -3151,9 +3160,7 @@ async def run_bili_push():
                                         push_text += message_title
                                     elif cache_push_style.startswith("[链接]"):
                                         cache_push_style = cache_push_style.removeprefix("[链接]")
-                                        # push_text += message_url
-                                        # 需要检查发送消息内容是否违规
-                                        push_text += "message_url"
+                                        push_text += message_url
                                     elif cache_push_style.startswith("[内容]"):
                                         cache_push_style = cache_push_style.removeprefix("[内容]")
                                         push_text += message_body

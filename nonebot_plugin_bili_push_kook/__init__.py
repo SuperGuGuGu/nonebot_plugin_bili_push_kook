@@ -25,23 +25,34 @@ from nonebot_plugin_apscheduler import scheduler
 
 
 def connect_api(type: str, url: str, post_json=None, file_path: str = None):
-    # 把api调用的代码放在一起，方便下一步进行异步开发
+    h = {
+        "Sec-Ch-Ua": '"Chromium";v="118", "Microsoft Edge";v="118", "Not=A?Brand";v="99"',
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
+                  "application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+        "Cache-Control": "max-age=0",
+        "Accept-Encoding": "gzip, deflate, br",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76"}
     if type == "json":
         if post_json is None:
-            return json.loads(httpx.get(url).text)
+            return json.loads(httpx.get(url, headers=h).text)
         else:
-            return json.loads(httpx.post(url, json=post_json).text)
+            return json.loads(httpx.post(url, json=post_json, headers=h).text)
     elif type == "image":
-        try:
-            image = Image.open(BytesIO(httpx.get(url).content))
-        except Exception as e:
+        if url in ["none", "None"] or url is None:
             image = draw_text("获取图片出错", 50, 10)
+        else:
+            try:
+                image = Image.open(BytesIO(httpx.get(url).content))
+            except Exception as e:
+                image = draw_text("获取图片出错", 50, 10)
         return image
     elif type == "file":
         cache_file_path = file_path + "cache"
         try:
             # 这里不能用httpx。用就报错。
-            with open(cache_file_path, "wb") as f, requests.get(url) as res:
+            with open(cache_file_path, "wb") as f, requests.get(url, headers=h) as res:
                 f.write(res.content)
             logger.info("下载完成")
             shutil.copyfile(cache_file_path, file_path)
@@ -2038,7 +2049,7 @@ get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '�
 
 @get_new.handle()
 async def bili_push_command(bot: Bot, event: Event):
-    logger.info("bili_push_command_1.1.7.1")
+    logger.info("bili_push_command_1.1.11")
     returnpath = "None"
     message = " "
     code = 0
@@ -2192,7 +2203,7 @@ async def bili_push_command(bot: Bot, event: Event):
                                 image_path = f"{cachepath}{dynamicid}/"
                                 if not os.path.exists(image_path):
                                     os.makedirs(image_path)
-                                image_path = f"{image_path}{num}.png"
+                                image_path += f"{num}.png"
                                 image.save(image_path)
                                 imageurl = await bot.upload_file(returnpath)
                                 cache_msg = MessageSegment.image(imageurl)
@@ -2249,7 +2260,7 @@ async def bili_push_command(bot: Bot, event: Event):
 
                 conn = sqlite3.connect(livedb)
                 cursor = conn.cursor()
-                cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE uid = ‘{uid}’ AND groupcode = '{groupcode}'")
+                cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE uid = '{uid}' AND groupcode = '{groupcode}'")
                 subscription = cursor.fetchone()
                 cursor.close()
                 conn.commit()
@@ -2336,22 +2347,35 @@ async def bili_push_command(bot: Bot, event: Event):
         if user_id in plugin_config("admin", groupcode):
             logger.info("command:删除订阅")
             code = 0
+            # 判断command2是否为纯数字或l开头的数字
             if "UID:" in command2:
                 command2 = command2.removeprefix("UID:")
+            if command2.startswith("L"):
+                command2 = command2.replace("L", "l")
+            if command2.startswith("l"):
+                command2_cache = command2.removeprefix("l")
+            else:
+                command2_cache = command2
             try:
-                command2 = int(command2)
-                command2 = str(command2)
+                command2_cache = int(command2_cache)
+                if command2.startswith("l"):
+                    command2 = f"l{command2_cache}"
+                else:
+                    command2 = str(command2_cache)
             except Exception as e:
                 command2 = ""
             if command2 == "":
                 code = 1
                 message = "请添加uid来删除订阅"
             else:
-                uid = command2
-
                 conn = sqlite3.connect(livedb)
                 cursor = conn.cursor()
-                cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE uid = {uid} AND groupcode = '{groupcode}'")
+                if command2.startswith("l"):
+                    cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE "
+                                   f"liveid = {command2[1:]} AND groupcode = '{groupcode}'")
+                else:
+                    cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE "
+                                   f"uid = {command2} AND groupcode = '{groupcode}'")
                 subscription = cursor.fetchone()
                 cursor.close()
                 conn.commit()
@@ -2364,7 +2388,7 @@ async def bili_push_command(bot: Bot, event: Event):
                     subid = str(subscription[0])
                     conn = sqlite3.connect(livedb)
                     cursor = conn.cursor()
-                    cursor.execute("delete from subscriptionlist3 where id = " + subid)
+                    cursor.execute(f"delete from subscriptionlist3 where id = {subid}")
                     conn.commit()
                     cursor.close()
                     conn.close()
@@ -2449,7 +2473,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info("bili_push_1.1.8")
+    logger.info("bili_push_1.1.11")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
@@ -2496,10 +2520,17 @@ async def run_bili_push():
                     friendlist.append(member_id)
 
         async def send_msg(groupcode: str = None, msg=None):
+            if beta_test:
+                print(f"【发送消息：目标：{groupcode}, 内容：{msg}】")
             async def send_msg_api(message_type:str, target, message):
                 await nonebot.get_bot(botid).send_msg(
                     message_type=message_type,
                     user_id=target,
+                    message=message)
+            async def send_group_msg_api(message_type:str, target, message):
+                await nonebot.get_bot(botid).send_msg(
+                    message_type=message_type,
+                    channel_id=target,
                     message=message)
 
             if beta_test:
@@ -2514,18 +2545,20 @@ async def run_bili_push():
                             await send_msg_api("private", groupcode[2:], "内容发送失败")
                         except Exception as e:
                             pass
+                        await asyncio.sleep(5)
                 else:
                     logger.error("bot找不到好友")
             elif groupcode.startswith("g"):
                 if groupcode[1:] in grouplist:
                     try:
-                        await send_msg_api("channel", groupcode[1:], msg)
+                        await send_group_msg_api("channel", groupcode[1:], msg)
                     except Exception as e:
-                        logger.error(f"内容发送失败【私聊目标：{groupcode[1:]}， 消息内容：{msg}】")
+                        logger.error(f"内容发送失败【群聊目标：{groupcode[1:]}， 消息内容：{msg}】")
                         try:
-                            await send_msg_api("channel", groupcode[1:], "内容发送失败")
+                            await send_group_msg_api("channel", groupcode[1:], "内容发送失败")
                         except Exception as e:
                             pass
+                        await asyncio.sleep(5)
                 else:
                     logger.error("bot未在频道中")
             else:
@@ -2707,24 +2740,33 @@ async def run_bili_push():
                             uid = livedata["uid"]
                             logger.info(f"bili_live_开始获取消息:{uid}")
 
+                            url = f"https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid={uid}"
+                            json_data = connect_api("json", url)
+                            if json_data["code"] != 0:
+                                logger.error("bapi连接出错")
+                                return_data = {"user_profile": {"info": {"uname": "name", "face": "None"}}}
+                            else:
+                                return_data = json_data["data"]["cards"][0]["desc"]
+
                             conn = sqlite3.connect(livedb)
                             cursor = conn.cursor()
                             live_status = str(livedata["live_status"])
                             cursor.execute(f"SELECT * FROM livelist3 WHERE uid='{uid}'")
                             data_db = cursor.fetchone()
                             if data_db is None or live_status != str(data_db[1]):
-                                uname = livedata["uname"]
-                                face = livedata["face"]
-                                cover_from_user = livedata["cover_from_user"]
+                                uname = return_data["user_profile"]["info"]["uname"]
+                                face = return_data["user_profile"]["info"]["face"]
+                                cover_from_user = livedata["user_cover"]
                                 keyframe = livedata["keyframe"]
                                 live_title = livedata["title"]
                                 room_id = livedata["room_id"]
 
                                 live_time = livedata["live_time"]
-                                live_time = time.localtime(live_time)
-                                live_time = time.strftime("%Y年%m月%d日 %H:%M:%S", live_time)
+                                # 无需转换
+                                # live_time = time.localtime(live_time)
+                                # live_time = time.strftime("%Y年%m月%d日 %H:%M:%S", live_time)
 
-                                online = livedata["online"]
+                                # online = livedata["online"]
 
                                 if live_status == "1":
                                     logger.info("live开始绘图")
@@ -3210,11 +3252,7 @@ async def run_bili_push():
                                     elif cache_push_style.startswith("[绘图]"):
                                         cache_push_style = cache_push_style.removeprefix("[绘图]")
                                         if push_text != "":
-                                            msg = MessageSegment.text(push_text)
-                                            if groupcode.startswith("gp"):
-                                                await send_msg(groupcode=groupcode, msg=msg)
-                                            else:
-                                                await send_msg(groupcode=groupcode, msg=msg)
+                                            await send_msg(groupcode=groupcode, msg=MessageSegment.text(push_text))
                                             push_text = ""
                                         imageurl = await nonebot.get_bot(botid).upload_file(draw_path)
                                         msg = MessageSegment.image(imageurl)
@@ -3222,11 +3260,7 @@ async def run_bili_push():
                                     elif cache_push_style.startswith("[图片]"):
                                         cache_push_style = cache_push_style.removeprefix("[图片]")
                                         if push_text != "":
-                                            msg = MessageSegment.text(push_text)
-                                            if groupcode.startswith("gp"):
-                                                await send_msg(groupcode=groupcode, msg=msg)
-                                            else:
-                                                await send_msg(groupcode=groupcode, msg=msg)
+                                            await send_msg(groupcode=groupcode, msg=MessageSegment.text(push_text))
                                             push_text = ""
                                         num = 0
                                         for url in message_images:

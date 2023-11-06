@@ -1,4 +1,4 @@
-# nonebot-plugin-bili-push-koon
+# nonebot-plugin-bili-push-kook
 
 B 订阅推送插件 for Kook
 

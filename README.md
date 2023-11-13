@@ -18,7 +18,6 @@ B 订阅推送插件 for Kook
     /查看订阅  # 查看当前群聊的所有订阅。显示为uid
     /帮助 查看命令菜单
 
-
 ![输入图片描述](README_md_files/9cf89890-0952-11ee-8733-25d9c7397331.jpeg?v=1&type=image)
 ![输入图片描述](README_md_files/7fd7ee50-0952-11ee-8733-25d9c7397331.jpeg?v=1&type=image)
 

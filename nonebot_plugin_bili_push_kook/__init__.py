@@ -2049,7 +2049,7 @@ get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '�
 
 @get_new.handle()
 async def bili_push_command(bot: Bot, event: Event):
-    logger.info("bili_push_command_1.1.11")
+    logger.info("bili_push_command_1.1.12")
     returnpath = "None"
     message = " "
     code = 0
@@ -2140,16 +2140,27 @@ async def bili_push_command(bot: Bot, event: Event):
     if command == "最新动态":
         logger.info("command:查询最新动态")
         code = 0
+
+        # 判断command2是否为纯数字或l开头的数字
         if "UID:" in command2:
             command2 = command2.removeprefix("UID:")
+        if command2.startswith("L"):
+            command2 = command2.replace("L", "l")
+        if command2.startswith("l"):
+            command2_cache = command2.removeprefix("l")
+        else:
+            command2_cache = command2
         try:
-            command2 = int(command2)
-            command2 = str(command2)
+            command2_cache = int(command2_cache)
+            if command2.startswith("l"):
+                command2 = f"l{command2_cache}"
+            else:
+                command2 = str(command2_cache)
         except Exception as e:
             command2 = ""
         if command2 == "":
             code = 1
-            message = "请添加uid来查询最新动态"
+            message = "请添加uid或房间id来添加订阅"
         else:
             uid = command2
             logger.info(f"开始获取信息-{uid}")
@@ -2187,8 +2198,7 @@ async def bili_push_command(bot: Bot, event: Event):
                             msg += cache_msg
                             cache_push_style = cache_push_style.removeprefix("[标题]")
                         elif cache_push_style.startswith("[链接]"):
-                            # 需要检查发送消息内容是否违规
-                            cache_msg = MessageSegment.text("message_url")
+                            cache_msg = MessageSegment.text(message_url)
                             msg += cache_msg
                             cache_push_style = cache_push_style.removeprefix("[链接]")
                         elif cache_push_style.startswith("[内容]"):
@@ -2260,7 +2270,12 @@ async def bili_push_command(bot: Bot, event: Event):
 
                 conn = sqlite3.connect(livedb)
                 cursor = conn.cursor()
-                cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE uid = '{uid}' AND groupcode = '{groupcode}'")
+                if command2.startswith("l"):
+                    cursor.execute(
+                        f"SELECT * FROM subscriptionlist3 WHERE liveid = {command2[1:]} AND groupcode = '{groupcode}'")
+                else:
+                    cursor.execute(
+                        f"SELECT * FROM subscriptionlist3 WHERE uid = {command2} AND groupcode = '{groupcode}'")
                 subscription = cursor.fetchone()
                 cursor.close()
                 conn.commit()
@@ -2300,13 +2315,11 @@ async def bili_push_command(bot: Bot, event: Event):
                     returncode = returnjson["code"]
                     if returncode == 0:
                         logger.info('获取动态图片并发送')
-                        # 获取动态id并保存
                         if returnjson["data"]["has_more"] == 1:
                             return_datas = returnjson["data"]["cards"]
 
                             conn = sqlite3.connect(livedb)
                             cursor = conn.cursor()
-                            # 数据库列表转为序列
                             cursor.execute("SELECT * FROM sqlite_master WHERE type='table'")
                             datas = cursor.fetchall()
                             tables = []
@@ -2316,9 +2329,17 @@ async def bili_push_command(bot: Bot, event: Event):
                             if groupcode not in tables:
                                 cursor.execute(f'create table {groupcode}'
                                                f'(dynamicid int(10) primary key, uid varchar(10))')
+                            # 将新动态保存到数据库中
                             for return_data in return_datas:
                                 dynamicid = str(return_data["desc"]["dynamic_id"])
                                 cursor.execute(f"replace into {groupcode}(dynamicid,uid) values('{dynamicid}','{uid}')")
+                            # 检查数据库中是否有旧动态，更新到群已推送列表中
+                            cursor.execute(f"SELECT * FROM wait_push2 WHERE uid='{uid}'")
+                            datas = cursor.fetchall()
+                            if datas:
+                                for data in datas:
+                                    cursor.execute(
+                                        f"replace into {groupcode}(dynamicid,uid) values('{data[0]}','{data[1]}')")
                             cursor.close()
                             conn.commit()
                             conn.close()
@@ -2326,7 +2347,10 @@ async def bili_push_command(bot: Bot, event: Event):
                             drawimage = get_draw(return_datas[0], only_info=True)
                             if drawimage["code"] != 0:
                                 returnpath = drawimage["draw_path"]
-                                message = "添加订阅成功"
+                                if command2.startswith("l"):
+                                    message = "添加直播、动态订阅成功"
+                                else:
+                                    message = "添加动态订阅成功\n如需订阅直播间，请发送“/添加订阅 L”+直播间号\n例：“/添加订阅 L1234”"
                                 code = 3
                             else:
                                 code = 1
@@ -2366,16 +2390,16 @@ async def bili_push_command(bot: Bot, event: Event):
                 command2 = ""
             if command2 == "":
                 code = 1
-                message = "请添加uid来删除订阅"
+                message = "请添加uid或房间id来添加订阅"
             else:
                 conn = sqlite3.connect(livedb)
                 cursor = conn.cursor()
                 if command2.startswith("l"):
-                    cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE "
-                                   f"liveid = {command2[1:]} AND groupcode = '{groupcode}'")
+                    cursor.execute(
+                        f"SELECT * FROM subscriptionlist3 WHERE liveid = {command2[1:]} AND groupcode = '{groupcode}'")
                 else:
-                    cursor.execute(f"SELECT * FROM subscriptionlist3 WHERE "
-                                   f"uid = {command2} AND groupcode = '{groupcode}'")
+                    cursor.execute(
+                        f"SELECT * FROM subscriptionlist3 WHERE uid = {command2} AND groupcode = '{groupcode}'")
                 subscription = cursor.fetchone()
                 cursor.close()
                 conn.commit()
@@ -2473,7 +2497,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info("bili_push_1.1.11")
+    logger.info("bili_push_1.1.12")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))

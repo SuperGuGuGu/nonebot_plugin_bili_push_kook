@@ -25,14 +25,7 @@ from nonebot_plugin_apscheduler import scheduler
 
 
 def connect_api(type: str, url: str, post_json=None, file_path: str = None):
-    h = {
-        "Sec-Ch-Ua": '"Chromium";v="118", "Microsoft Edge";v="118", "Not=A?Brand";v="99"',
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,"
-                  "application/signed-exchange;v=b3;q=0.7",
-        "Accept-Language": "zh-CN,zh;q=0.9",
-        "Cache-Control": "max-age=0",
-        "Accept-Encoding": "gzip, deflate, br",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+    h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
                       "Chrome/118.0.0.0 Safari/537.36 Edg/118.0.2088.76"}
     if type == "json":
         if post_json is None:
@@ -2049,7 +2042,7 @@ get_new = on_command("最新动态", aliases={'添加订阅', '删除订阅', '�
 
 @get_new.handle()
 async def bili_push_command(bot: Bot, event: Event):
-    logger.info("bili_push_command_1.1.12")
+    logger.info("bili_push_command_1.1.13")
     returnpath = "None"
     message = " "
     code = 0
@@ -2137,6 +2130,84 @@ async def bili_push_command(bot: Bot, event: Event):
     conn.commit()
     conn.close()
 
+    # 获取成员名单与频道名单
+    friendlist = []
+    grouplist = []
+    guild_list = await nonebot.get_bot(botid).call_api("/api/v3/guild/list")
+    guild_datas = guild_list.guilds
+    for guild_data in guild_datas:
+        guild_id = guild_data.id_  # 服务器id
+        guide_name = guild_data.name  # 服务器名称
+
+        channels = await nonebot.get_bot(botid).call_api("/api/v3/guild/view", guild_id=guild_id)
+        channels = channels.channels
+        for channel in channels:
+            channel_id = channel.id_  # 频道id
+            channel_name = channel.name  # 频道名称
+            channel_type = channel.type  # 频道类型
+            # channel_type =0:分组 =1:文字 =2:语音
+            if channel_id not in grouplist and channel_type == 1:
+                grouplist.append(channel_id)
+
+        data = await nonebot.get_bot(botid).call_api("/api/v3/guild/user-list", guild_id=guild_id)
+        member_list = data.users
+        for member_data in member_list:
+            member_id = member_data.id_  # 用户id
+            # member_name = member_data.username  # 用户名字
+            member_name = member_data.nickname  # 用户昵称
+            member_face = member_data.avatar  # 头像图片
+            member_isbot = member_data.bot  # 判断是否bot
+            member_status = member_data.status  # ？？
+            if member_id not in friendlist:
+                friendlist.append(member_id)
+
+    async def send_msg(groupcode: str = None, msg=None):
+        if beta_test:
+            print(f"【发送消息：目标：{groupcode}, 内容：{msg}】")
+
+        async def send_msg_api(message_type: str, target, message):
+            await nonebot.get_bot(botid).send_msg(
+                message_type=message_type,
+                user_id=target,
+                message=message)
+
+        async def send_group_msg_api(message_type: str, target, message):
+            await nonebot.get_bot(botid).send_msg(
+                message_type=message_type,
+                channel_id=target,
+                message=message)
+
+        if beta_test:
+            print(f"发送groupcode:{groupcode}ms-msg：{msg}")
+        if groupcode.startswith("gp"):
+            if groupcode[2:] in friendlist:
+                try:
+                    await send_msg_api("private", groupcode[2:], msg)
+                except Exception as e:
+                    logger.error(f"内容发送失败【私聊目标：{groupcode[2:]}， 消息内容：{msg}】")
+                    try:
+                        await send_msg_api("private", groupcode[2:], "内容发送失败")
+                    except Exception as e:
+                        pass
+                    await asyncio.sleep(5)
+            else:
+                logger.error("bot找不到好友")
+        elif groupcode.startswith("g"):
+            if groupcode[1:] in grouplist:
+                try:
+                    await send_group_msg_api("channel", groupcode[1:], msg)
+                except Exception as e:
+                    logger.error(f"内容发送失败【群聊目标：{groupcode[1:]}， 消息内容：{msg}】")
+                    try:
+                        await send_group_msg_api("channel", groupcode[1:], "内容发送失败")
+                    except Exception as e:
+                        pass
+                    await asyncio.sleep(5)
+            else:
+                logger.error("bot未在频道中")
+        else:
+            logger.error("不支持的发送消息形式")
+
     if command == "最新动态":
         logger.info("command:查询最新动态")
         code = 0
@@ -2185,27 +2256,30 @@ async def bili_push_command(bot: Bot, event: Event):
 
                     num = 10
                     cache_push_style = plugin_config("bilipush_push_style", groupcode)
-                    msg = MessageSegment.text("")
-                    while num > 0:
-                        num -= 1
-                        if cache_push_style.startswith("[绘图]"):
-                            imageurl = await bot.upload_file(returnpath)
-                            cache_msg = MessageSegment.image(imageurl)
-                            msg += cache_msg
-                            cache_push_style = cache_push_style.removeprefix("[绘图]")
-                        elif cache_push_style.startswith("[标题]"):
-                            cache_msg = MessageSegment.text(message_title)
-                            msg += cache_msg
+                    push_text = ""
+                    while len(cache_push_style) > 0:
+                        if cache_push_style.startswith("[标题]"):
                             cache_push_style = cache_push_style.removeprefix("[标题]")
+                            push_text += message_title
                         elif cache_push_style.startswith("[链接]"):
-                            cache_msg = MessageSegment.text(message_url)
-                            msg += cache_msg
                             cache_push_style = cache_push_style.removeprefix("[链接]")
+                            push_text += message_url
                         elif cache_push_style.startswith("[内容]"):
-                            cache_msg = MessageSegment.text(message_body)
-                            msg += cache_msg
                             cache_push_style = cache_push_style.removeprefix("[内容]")
+                            push_text += message_body
+                        elif cache_push_style.startswith("[绘图]"):
+                            cache_push_style = cache_push_style.removeprefix("[绘图]")
+                            if push_text != "":
+                                await send_msg(groupcode=groupcode, msg=MessageSegment.text(push_text))
+                                push_text = ""
+                            imageurl = await nonebot.get_bot(botid).upload_file(returnpath)
+                            msg = MessageSegment.image(imageurl)
+                            await send_msg(groupcode=groupcode, msg=msg)
                         elif cache_push_style.startswith("[图片]"):
+                            cache_push_style = cache_push_style.removeprefix("[图片]")
+                            if push_text != "":
+                                await send_msg(groupcode=groupcode, msg=MessageSegment.text(push_text))
+                                push_text = ""
                             num = 0
                             for url in message_images:
                                 num += 1
@@ -2215,15 +2289,19 @@ async def bili_push_command(bot: Bot, event: Event):
                                     os.makedirs(image_path)
                                 image_path += f"{num}.png"
                                 image.save(image_path)
-                                imageurl = await bot.upload_file(returnpath)
-                                cache_msg = MessageSegment.image(imageurl)
-                                msg += cache_msg
-                            cache_push_style = cache_push_style.removeprefix("[图片]")
-                        elif cache_push_style == "":
-                            num = 0
+                                imageurl = await nonebot.get_bot(botid).upload_file(image_path)
+                                msg = MessageSegment.image(imageurl)
+                                await send_msg(groupcode=groupcode, msg=msg)
                         else:
-                            logger.error("读取动态推送样式出错，请检查配置是否正确")
-                    code = 4
+                            push_text += cache_push_style[:1]
+                            cache_push_style = cache_push_style.removeprefix(cache_push_style[:1])
+                    if push_text != "":
+                        msg = MessageSegment.text(push_text)
+                        if groupcode.startswith("gp"):
+                            await send_msg(groupcode=groupcode, msg=msg)
+                        else:
+                            await send_msg(groupcode=groupcode, msg=msg)
+                        push_text = ""
             else:
                 logger.info('returncode!=0')
                 code = 1
@@ -2497,7 +2575,7 @@ minute = "*/" + waittime
 
 @scheduler.scheduled_job("cron", minute=minute, id="job_0")
 async def run_bili_push():
-    logger.info("bili_push_1.1.12")
+    logger.info("bili_push_1.1.13")
     # ############开始自动运行插件############
     now_maximum_send = maximum_send
     date = str(time.strftime("%Y-%m-%d", time.localtime()))
